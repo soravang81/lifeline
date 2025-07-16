@@ -1,0 +1,442 @@
+// Medical Reports Model
+
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(uuid())
+  name        String?
+  gid         String?
+  email       String    @unique
+  password    String    @map("password")
+  role        Role      @default(PATIENT)
+  image       String?   @map("image")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  authenticators Authenticator[]
+
+  patient     Patient?
+  doctor      Doctor?
+  hospital    Hospital?
+  @@map("user")
+}
+
+// 2. Patients Model
+model Patient {
+  id              String    @id @default(uuid())
+  userId          String    @unique 
+  name            String
+  phone           String?   @unique
+  dob             DateTime
+  gender          Gender
+  bloodType       BloodType?
+  allergy         String?
+  state           String?
+  city            String?
+  address         String?
+  surgery         String?
+  medicalIssue    String?   @map("medical_issue")
+  emergencyContact String?  @map("emergency_contact")
+  hospitalId      String?   @map("hospital_id") // New: Affiliated hospital (optional for migration)
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hospital        Hospital?  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  doctors         Doctor[]
+  medicalRecords  MedicalRecord[]
+  medicalReports  MedicalReport[]
+  familyHistory   FamilyHistory[]
+  appointments    Appointment[]
+  emergencyRequests EmergencyRequest[]
+  prescriptions   Prescription[]
+  beds            Bed[] // New: beds assigned to this patient
+  feedbacks       Feedback[] @relation("PatientFeedback")
+
+  // Additional Medical Information
+  yearlyIncome      String?
+  geneticDiseases   String?
+  longTermMedication String?
+
+  // Subsidy Information
+   hasSubsidy       Boolean?
+  subsidyType       String?
+  subsidyDetails    String?
+
+  @@map("patients")
+}
+
+model MedicalReport {
+  id           String    @id @default(uuid())
+  patientId    String
+  doctorId     String
+  prescription String
+  diagnosis    String
+  date         DateTime @default(now())
+
+  // Relations
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor       Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@map("medical_reports")
+}
+// 3. Doctors Model
+model Doctor {
+  id              String    @id @default(uuid())
+  userId          String    @unique 
+  hospitalId      String   @map("hospital_id")
+  specialization  String?
+  experience      Int       @default(0)
+  availability    Boolean   @default(true)
+  phone           String?   @unique // New: Doctor's phone number
+  degree          String?   // New: MBBS, MD, MS, etc.
+  department      String?   // New: Department/Unit
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patients        Patient[] 
+  medicalRecords  MedicalRecord[]
+  medicalReports  MedicalReport[]
+  appointments    Appointment[]
+  prescriptions   Prescription[]
+  feedbacks Feedback[] @relation("DoctorFeedback")
+
+  @@map("doctors")
+}
+
+// 4. Hospitals Model
+model Hospital {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  name            String
+  address         String
+  latitude       Float?     @map("latitude")
+  longitude      Float?     @map("longitude")
+  pending         Boolean   @default(true)
+  approved        Boolean   @default(false)
+  phone           String    @unique
+  totalBeds       Int       @default(0) @map("total_beds")
+  availableBeds   Int       @default(0) @map("available_beds")
+  icuBeds         Int       @default(0) @map("icu_beds")
+  ventilators     Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctors         Doctor[]
+  patients        Patient[]
+  medicalRecords  MedicalRecord[]
+  appointments    Appointment[]
+  emergencyRequests EmergencyRequest[]
+  beds            Bed[]
+
+  bloodBankStocks BloodBankStock[]
+  bloodBankRequests BloodBankRequest[]
+  feedbacks Feedback[] @relation("HospitalFeedback")
+
+  @@map("hospitals")
+}
+
+// 5. Medical Records Model
+model MedicalRecord {
+  id              String    @id @default(uuid()) @map("record_id")
+  patientId       String    @map("patient_id")
+  doctorId        String?   @map("doctor_id")
+  hospitalId      String?   @map("hospital_id")
+  diagnosis       String
+  prescription    String?
+  reportUrl       String?   @map("report_url")
+  consultationDate DateTime @default(now()) @map("consultation_date")
+
+  // Relations
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor          Doctor?   @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  hospital        Hospital? @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  
+
+  @@map("medical_records")
+}
+
+// 6. Family Medical History Model
+model FamilyHistory {
+  id              String    @id @default(uuid()) @map("family_id")
+  patientId       String    @map("patient_id")
+  relativeName    String?   @map("relative_name")
+  relationship    Relationship?
+  condition       String
+
+  // Relations
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("family_history")
+}
+
+// 7. Appointments Model
+model Appointment {
+  id              String    @id @default(uuid()) @map("appointment_id")
+  patientId       String    @map("patient_id")
+  doctorId        String    @map("doctor_id")
+  hospitalId      String?   @map("hospital_id")
+  date            DateTime  @map("appointment_date")
+  status          AppointmentStatus @default(SCHEDULED)
+  consultationType ConsultationType?  @map("consultation_type")
+
+  // Relations
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor          Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  hospital        Hospital? @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  feedbacks Feedback[] @relation("AppointmentFeedback")
+
+  @@map("appointments")
+}
+
+// 8. Emergency Requests Model
+model EmergencyRequest {
+  id              String    @id @default(uuid()) @map("request_id")
+  patientId       String    @map("patient_id")
+  hospitalId      String    @map("hospital_id")
+  urgencyLevel    UrgencyLevel? @map("urgency_level")
+  status          RequestStatus @default(PENDING)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  hospital        Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_requests")
+}
+
+// 9. Prescriptions Model
+model Prescription {
+  id              String    @id @default(uuid()) @map("prescription_id")
+  patientId       String    @map("patient_id")
+  doctorId        String    @map("doctor_id")
+  issuedDate      DateTime  @default(now()) @map("issued_date")
+  medicines       Json
+
+  // Relations
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor          Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@map("prescriptions")
+}
+
+// 10. Beds Model
+model Bed {
+  id           String   @id @map("bed_id") // e.g., B001, B002
+  hospitalId   String   @map("hospital_id")
+  type         BedType  @default(GENERAL)
+  status       BedStatus @default(AVAILABLE)
+  room         String
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  patientId    String?  @map("patient_id") // patient assigned to this bed (if occupied)
+  patientName  String?  @map("patient_name") // Store patient name directly
+
+  // Relations
+  hospital     Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient      Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@map("beds")
+}
+
+
+// 11. Blood Bank Stock Model
+model BloodBankStock {
+  id           String     @id @default(uuid())
+  hospitalId   String
+  bloodType    BloodType
+  quantity     Int        @default(0)
+  threshold    Int        @default(5)
+  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime   @default(now())
+
+  // Relations
+  hospital     Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  requests     BloodBankRequest[]
+
+  @@unique([hospitalId, bloodType])
+  @@map("blood_bank_stock")
+}
+
+// Blood Bank Request Model
+model BloodBankRequest {
+  id           String     @id @default(uuid())
+  hospitalId   String
+  bloodType    BloodType
+  quantity     Int        @default(1)
+  status       RequestStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
+
+  // Relations
+  hospital     Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  stock        BloodBankStock? @relation(fields: [hospitalId, bloodType], references: [hospitalId, bloodType], onDelete: Cascade)
+
+  @@map("blood_bank_request")
+}
+
+/// Feedback for appointments, doctors, hospitals, and services
+model Feedback {
+  id              String   @id @default(uuid())
+  appointmentId   String
+  patientId       String
+  doctorId        String?
+  hospitalId      String?
+  doctorRating    Int      // 1-5
+  hospitalRating  Int      // 1-5
+  servicesRating  Int      // 1-5
+  message         String?  // Optional comments
+  createdAt       DateTime @default(now())
+
+  // Relations
+  appointment     Appointment @relation("AppointmentFeedback", fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient         Patient     @relation("PatientFeedback", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor          Doctor?     @relation("DoctorFeedback", fields: [doctorId], references: [id], onDelete: SetNull)
+  hospital        Hospital?   @relation("HospitalFeedback", fields: [hospitalId], references: [id], onDelete: SetNull)
+
+  @@map("feedback")
+}
+
+enum Gender {
+  Male
+  Female
+  Other
+}
+
+enum BloodType {
+  A_POSITIVE  @map("A+")
+  A_NEGATIVE  @map("A-")
+  B_POSITIVE  @map("B+")
+  B_NEGATIVE  @map("B-")
+  O_POSITIVE  @map("O+")
+  O_NEGATIVE  @map("O-")
+  AB_POSITIVE @map("AB+")
+  AB_NEGATIVE @map("AB-")
+}
+
+enum Relationship {
+  Father
+  Mother
+  Sibling
+  Grandparent
+  Other
+}
+
+enum AppointmentStatus {
+  SCHEDULED   @map("Scheduled")
+  COMPLETED   @map("Completed")
+  CANCELLED   @map("Cancelled")
+}
+
+enum ConsultationType {
+  IN_PERSON   @map("In-Person")
+  VIDEO       @map("Video")
+}
+
+enum UrgencyLevel {
+  LOW       @map("Low")
+  MEDIUM    @map("Medium")
+  HIGH      @map("High")
+  CRITICAL  @map("Critical")
+}
+
+enum RequestStatus {
+  PENDING    @map("Pending")
+  ACCEPTED   @map("Accepted")
+  REJECTED   @map("Rejected")
+}
+
+enum Role {
+  DOCTOR          @map("Doctor")
+  PATIENT         @map("Patient")
+  HOSPITAL        @map("Hospital")
+}
+
+enum BedType {
+  GENERAL   @map("General")
+  ICU       @map("ICU")
+  EMERGENCY @map("Emergency")
+  PEDIATRIC @map("Pediatric")
+  CARDIAC   @map("Cardiac")
+  SURGICAL  @map("Surgical")
+}
+
+enum BedStatus {
+  AVAILABLE      @map("Available")
+  OCCUPIED       @map("Occupied")
+  RESERVED       @map("Reserved")
+  MAINTENANCE    @map("Maintenance")
+}
+
+
+// ----------------------------------------------------------------------------------------------------------
+
+
+
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String  @map("providerAccountId")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  // Relations
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@map("account")
+}
+
+model Session {
+  sessionToken String   @id @map("sessionToken")
+  userId      String
+  expires     DateTime
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verificationToken")
+}
+
+model Authenticator {
+  credentialID          String  @unique @map("credentialID")
+  userId               String  @map("userId")
+  providerAccountId    String  @map("providerAccountId")
+  credentialPublicKey  String  @map("credentialPublicKey")
+  counter              Int
+  credentialDeviceType String  @map("credentialDeviceType")
+  credentialBackedUp   Boolean @map("credentialBackedUp")
+  transports          String?
+
+  // Relations
+  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+  @@map("authenticator")
+}
